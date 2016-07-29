@@ -4,4 +4,6 @@
     <color name="background2">#000088</color>
     <color name="digital_text">#ffffff</color>
     <color name="watch_face_background">#03A9F4</color>
+    <color name="primary_text">#ffffff</color>
+    <color name="secondary_text">#B3E5FC</color>
 </resources>

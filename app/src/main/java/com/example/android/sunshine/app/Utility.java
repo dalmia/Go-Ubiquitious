@@ -35,6 +35,7 @@ public class Utility {
     public static String LOW_TEMP = "lowTemp";
     public static String HIGH_TEMP = "highTemp";
     public static String TIMESTAMP = "timestamp";
+    public static String WEATHER_ICON = "weatherIcon";
 
     public static boolean isLocationLatLonAvailable(Context context) {
         SharedPreferences prefs

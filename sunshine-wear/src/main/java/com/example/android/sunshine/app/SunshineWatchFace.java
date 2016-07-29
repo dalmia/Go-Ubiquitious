@@ -21,6 +21,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.res.Resources;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -39,6 +41,8 @@ import android.view.WindowInsets;
 
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.common.api.ResultCallback;
+import com.google.android.gms.wearable.Asset;
 import com.google.android.gms.wearable.DataApi;
 import com.google.android.gms.wearable.DataEvent;
 import com.google.android.gms.wearable.DataEventBuffer;
@@ -47,6 +51,7 @@ import com.google.android.gms.wearable.DataMap;
 import com.google.android.gms.wearable.DataMapItem;
 import com.google.android.gms.wearable.Wearable;
 
+import java.io.InputStream;
 import java.lang.ref.WeakReference;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
@@ -105,18 +110,24 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
 
         String LOW_TEMP = "lowTemp";
         String HIGH_TEMP = "highTemp";
+        String WEATHER_ICON = "weatherIcon";
 
         final Handler mUpdateTimeHandler = new EngineHandler(this);
         boolean mRegisteredTimeZoneReceiver = false;
         Paint mBackgroundPaint;
-        Paint mTextPaint;
+        Paint mPrimaryTextPaint;
+        Paint mSecondaryTextPaint;
+        Paint mWeatherIconPaint;
+
         boolean mAmbient;
         // Variables used to display the time on the watch face
         Calendar mCalendar;
         SimpleDateFormat mWeekDayFormat;
         java.text.DateFormat mDayFormat;
         GoogleApiClient mGoogleApiClient;
-        String lowTemp, highTemp;
+        String lowTemp = "-";
+        String highTemp = "-";
+        Bitmap mWeatherIconBitmap;
 
         final BroadcastReceiver mTimeZoneReceiver = new BroadcastReceiver() {
             @Override
@@ -153,8 +164,13 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
             mBackgroundPaint = new Paint();
             mBackgroundPaint.setColor(resources.getColor(R.color.watch_face_background));
 
-            mTextPaint = new Paint();
-            mTextPaint = createTextPaint(resources.getColor(R.color.digital_text));
+            mPrimaryTextPaint = new Paint();
+            mPrimaryTextPaint = createTextPaint(resources.getColor(R.color.primary_text));
+
+            mSecondaryTextPaint = new Paint();
+            mSecondaryTextPaint = createTextPaint(resources.getColor(R.color.secondary_text));
+
+            mWeatherIconPaint = new Paint();
 
             mCalendar = Calendar.getInstance();
             initialize();
@@ -230,7 +246,8 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
             float textSize = resources.getDimension(isRound
                     ? R.dimen.digital_text_size_round : R.dimen.digital_text_size);
 
-            mTextPaint.setTextSize(textSize);
+            mPrimaryTextPaint.setTextSize(textSize);
+            mSecondaryTextPaint.setTextSize(textSize);
         }
 
         @Override
@@ -251,7 +268,7 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
             if (mAmbient != inAmbientMode) {
                 mAmbient = inAmbientMode;
                 if (mLowBitAmbient) {
-                    mTextPaint.setAntiAlias(!inAmbientMode);
+                    mPrimaryTextPaint.setAntiAlias(!inAmbientMode);
                 }
                 invalidate();
             }
@@ -267,7 +284,6 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
          */
         @Override
         public void onTapCommand(int tapType, int x, int y, long eventTime) {
-            Resources resources = SunshineWatchFace.this.getResources();
             switch (tapType) {
                 case TAP_TYPE_TOUCH:
                     // The user has started touching the screen.
@@ -300,7 +316,16 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
                     mCalendar.get(Calendar.MINUTE), getAmOrPm(mCalendar.get(Calendar.AM_PM)))
                     : String.format(Locale.getDefault(), "%d:%02d %s", mCalendar.get(Calendar.HOUR),
                     mCalendar.get(Calendar.MINUTE), getAmOrPm(mCalendar.get(Calendar.AM_PM)));
-            canvas.drawText(text, mXOffset, mYOffset, mTextPaint);
+            canvas.drawText(text, mXOffset, mYOffset, mPrimaryTextPaint);
+            
+            // Drawing the components when not in ambient mode
+            if(!mAmbient){
+                canvas.drawText(highTemp, 150, 200, mPrimaryTextPaint);
+                canvas.drawText(lowTemp, 200, 200, mSecondaryTextPaint);
+                if(mWeatherIconBitmap != null){
+                    canvas.drawBitmap(mWeatherIconBitmap, 100, 200, null);
+                }
+            }
         }
 
         /**
@@ -367,6 +392,7 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
 
                         highTemp = map.getString(HIGH_TEMP);
                         lowTemp = map.getString(LOW_TEMP);
+                        getBitmapFromAsset(map.getAsset(WEATHER_ICON));
                     }
                 }
             }
@@ -382,6 +408,27 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
             if (mGoogleApiClient != null && mGoogleApiClient.isConnected())
                 mGoogleApiClient.disconnect();
         }
+
+        /**
+         * Loads the bitmap from the asset sent by the phone
+         *
+         * @param asset - asset received from the data map
+         */
+        public void getBitmapFromAsset(Asset asset){
+            if(asset != null){
+                Wearable.DataApi.getFdForAsset(mGoogleApiClient, asset).setResultCallback(
+                        new ResultCallback<DataApi.GetFdForAssetResult>() {
+                    @Override
+                    public void onResult(@NonNull DataApi.GetFdForAssetResult getFdForAssetResult) {
+                        InputStream inputStream = getFdForAssetResult.getInputStream();
+                        if(inputStream != null){
+                            mWeatherIconBitmap = BitmapFactory.decodeStream(inputStream);
+                        }
+                    }
+                });
+            }
+        }
+
     }
 
     /**

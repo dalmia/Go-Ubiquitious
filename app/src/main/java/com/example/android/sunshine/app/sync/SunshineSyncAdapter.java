@@ -38,6 +38,7 @@ import com.example.android.sunshine.app.data.WeatherContract;
 import com.example.android.sunshine.app.muzei.WeatherMuzeiSource;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.common.api.PendingResult;
+import com.google.android.gms.wearable.Asset;
 import com.google.android.gms.wearable.DataApi;
 import com.google.android.gms.wearable.PutDataMapRequest;
 import com.google.android.gms.wearable.PutDataRequest;
@@ -48,6 +49,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -516,12 +518,15 @@ public class SunshineSyncAdapter extends AbstractThreadedSyncAdapter {
                     SharedPreferences.Editor editor = prefs.edit();
                     editor.putLong(lastNotificationKey, System.currentTimeMillis());
                     editor.commit();
+                    Bitmap bitmap = BitmapFactory.decodeResource(getContext().getResources(), iconId);
+                    Asset weatherIcon = createAssetFromBitmap(bitmap);
 
                     // Creating a dataMap instance
                     PutDataMapRequest putDataMapRequest = PutDataMapRequest.create("/sunshine");
                     putDataMapRequest.getDataMap().putString(Utility.LOW_TEMP, lowTemp);
                     putDataMapRequest.getDataMap().putString(Utility.HIGH_TEMP, highTemp);
                     putDataMapRequest.getDataMap().putLong(Utility.TIMESTAMP, new Date().getTime());
+                    putDataMapRequest.getDataMap().putAsset(Utility.WEATHER_ICON, weatherIcon);
                     PutDataRequest request = putDataMapRequest.asPutDataRequest();
                     request.setUrgent();
                     PendingResult<DataApi.DataItemResult> pendingResult =
@@ -691,4 +696,11 @@ public class SunshineSyncAdapter extends AbstractThreadedSyncAdapter {
         spe.putInt(c.getString(R.string.pref_location_status_key), locationStatus);
         spe.commit();
     }
+
+    private static Asset createAssetFromBitmap(Bitmap bitmap){
+        final ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
+        bitmap.compress(Bitmap.CompressFormat.PNG, 100, byteStream);
+        return Asset.createFromBytes(byteStream.toByteArray());
+    }
+
 }
