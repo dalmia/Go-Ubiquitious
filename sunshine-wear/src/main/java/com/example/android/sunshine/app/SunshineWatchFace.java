@@ -249,8 +249,6 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
                 case TAP_TYPE_TAP:
                     // The user has completed the tap gesture.
                     mTapCount++;
-                    mBackgroundPaint.setColor(resources.getColor(mTapCount % 2 == 0 ?
-                            R.color.background : R.color.background2));
                     break;
             }
             invalidate();
@@ -269,9 +267,10 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
             long now = System.currentTimeMillis();
             mCalendar.setTimeInMillis(now);
             String text = mAmbient
-                    ? String.format(Locale.getDefault(), "%d:%02d", mCalendar.get(Calendar.HOUR), mCalendar.get(Calendar.MINUTE))
-                    : String.format(Locale.getDefault(), "%d:%02d:%02d", mCalendar.get(Calendar.HOUR),
-                    mCalendar.get(Calendar.MINUTE), mCalendar.get(Calendar.SECOND));
+                    ? String.format(Locale.getDefault(), "%d:%02d %s", mCalendar.get(Calendar.HOUR),
+                    mCalendar.get(Calendar.MINUTE), getAmOrPm(mCalendar.get(Calendar.AM_PM)))
+                    : String.format(Locale.getDefault(), "%d:%02d %s", mCalendar.get(Calendar.HOUR),
+                    mCalendar.get(Calendar.MINUTE), getAmOrPm(mCalendar.get(Calendar.AM_PM)));
             canvas.drawText(text, mXOffset, mYOffset, mTextPaint);
         }
 
@@ -312,5 +311,9 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
             mDayFormat = DateFormat.getDateFormat(SunshineWatchFace.this);
             mDayFormat.setCalendar(mCalendar);
         }
+    }
+
+    public String getAmOrPm(int amOrPm){
+        return amOrPm == Calendar.AM ? getString(R.string.am) : getString(R.string.pm);
     }
 }
