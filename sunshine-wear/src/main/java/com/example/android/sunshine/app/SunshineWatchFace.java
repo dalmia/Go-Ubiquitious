@@ -29,11 +29,23 @@ import android.graphics.Typeface;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
 import android.support.wearable.watchface.CanvasWatchFaceService;
 import android.support.wearable.watchface.WatchFaceStyle;
 import android.text.format.DateFormat;
 import android.view.SurfaceHolder;
 import android.view.WindowInsets;
+
+import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.wearable.DataApi;
+import com.google.android.gms.wearable.DataEvent;
+import com.google.android.gms.wearable.DataEventBuffer;
+import com.google.android.gms.wearable.DataItem;
+import com.google.android.gms.wearable.DataMap;
+import com.google.android.gms.wearable.DataMapItem;
+import com.google.android.gms.wearable.Wearable;
 
 import java.lang.ref.WeakReference;
 import java.text.SimpleDateFormat;
@@ -86,7 +98,14 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
         }
     }
 
-    private class Engine extends CanvasWatchFaceService.Engine {
+    private class Engine extends CanvasWatchFaceService.Engine implements
+            DataApi.DataListener,
+            GoogleApiClient.ConnectionCallbacks,
+            GoogleApiClient.OnConnectionFailedListener {
+
+        String LOW_TEMP = "lowTemp";
+        String HIGH_TEMP = "highTemp";
+
         final Handler mUpdateTimeHandler = new EngineHandler(this);
         boolean mRegisteredTimeZoneReceiver = false;
         Paint mBackgroundPaint;
@@ -96,6 +115,8 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
         Calendar mCalendar;
         SimpleDateFormat mWeekDayFormat;
         java.text.DateFormat mDayFormat;
+        GoogleApiClient mGoogleApiClient;
+        String lowTemp, highTemp;
 
         final BroadcastReceiver mTimeZoneReceiver = new BroadcastReceiver() {
             @Override
@@ -137,13 +158,20 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
 
             mCalendar = Calendar.getInstance();
             initialize();
+            mGoogleApiClient = new GoogleApiClient.Builder(SunshineWatchFace.this)
+                    .addApi(Wearable.API)
+                    .addConnectionCallbacks(this)
+                    .addOnConnectionFailedListener(this)
+                    .build();
         }
 
         @Override
         public void onDestroy() {
             mUpdateTimeHandler.removeMessages(MSG_UPDATE_TIME);
+            removeListener();
             super.onDestroy();
         }
+
 
         private Paint createTextPaint(int textColor) {
             Paint paint = new Paint();
@@ -159,12 +187,13 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
 
             if (visible) {
                 registerReceiver();
-
+                mGoogleApiClient.connect();
                 // Update time zone in case it changed while we weren't visible.
                 mCalendar.setTimeZone(TimeZone.getDefault());
                 initialize();
             } else {
                 unregisterReceiver();
+                removeListener();
             }
 
             // Whether the timer should be running depends on whether we're visible (as well as
@@ -305,15 +334,63 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
                 mUpdateTimeHandler.sendEmptyMessageDelayed(MSG_UPDATE_TIME, delayMs);
             }
         }
-        public void initialize(){
+
+        /**
+         * Helper function to initialize the date formats setting
+         * mWeekDayFormat to display the current day of the week and
+         * mDayFormat to display the date of the current day.
+         */
+        public void initialize() {
             mWeekDayFormat = new SimpleDateFormat("EEEE", Locale.getDefault());
             mWeekDayFormat.setCalendar(mCalendar);
             mDayFormat = DateFormat.getDateFormat(SunshineWatchFace.this);
             mDayFormat.setCalendar(mCalendar);
         }
+
+        @Override
+        public void onConnected(@Nullable Bundle bundle) {
+            Wearable.DataApi.addListener(mGoogleApiClient, this);
+        }
+
+        @Override
+        public void onConnectionSuspended(int i) {
+
+        }
+
+        @Override
+        public void onDataChanged(DataEventBuffer dataEventBuffer) {
+            for (DataEvent event : dataEventBuffer) {
+                if (event.getType() == DataEvent.TYPE_CHANGED) {
+                    DataItem item = event.getDataItem();
+                    if (item.getUri().getPath().equals("/sunshine")) {
+                        DataMap map = DataMapItem.fromDataItem(item).getDataMap();
+
+                        highTemp = map.getString(HIGH_TEMP);
+                        lowTemp = map.getString(LOW_TEMP);
+                    }
+                }
+            }
+        }
+
+        @Override
+        public void onConnectionFailed(@NonNull ConnectionResult connectionResult) {
+
+        }
+
+        public void removeListener() {
+            Wearable.DataApi.removeListener(mGoogleApiClient, this);
+            if (mGoogleApiClient != null && mGoogleApiClient.isConnected())
+                mGoogleApiClient.disconnect();
+        }
     }
 
-    public String getAmOrPm(int amOrPm){
+    /**
+     * Returns the appropriate String to be appended to the time displayed in the watch face
+     *
+     * @param amOrPm - AM_PM value of the current time
+     * @return - AM/PM as per amOrPM being the AM value or PM value
+     */
+    public String getAmOrPm(int amOrPm) {
         return amOrPm == Calendar.AM ? getString(R.string.am) : getString(R.string.pm);
     }
 }

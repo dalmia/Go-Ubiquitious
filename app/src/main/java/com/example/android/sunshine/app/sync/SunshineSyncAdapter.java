@@ -36,6 +36,12 @@ import com.example.android.sunshine.app.R;
 import com.example.android.sunshine.app.Utility;
 import com.example.android.sunshine.app.data.WeatherContract;
 import com.example.android.sunshine.app.muzei.WeatherMuzeiSource;
+import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.common.api.PendingResult;
+import com.google.android.gms.wearable.DataApi;
+import com.google.android.gms.wearable.PutDataMapRequest;
+import com.google.android.gms.wearable.PutDataRequest;
+import com.google.android.gms.wearable.Wearable;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -49,6 +55,7 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.Date;
 import java.util.Vector;
 import java.util.concurrent.ExecutionException;
 
@@ -87,14 +94,20 @@ public class SunshineSyncAdapter extends AbstractThreadedSyncAdapter {
     public static final int LOCATION_STATUS_UNKNOWN = 3;
     public static final int LOCATION_STATUS_INVALID = 4;
 
+    private GoogleApiClient mGoogleApiClient;
+
     public SunshineSyncAdapter(Context context, boolean autoInitialize) {
         super(context, autoInitialize);
+        mGoogleApiClient = new GoogleApiClient.Builder(context)
+                .addApi(Wearable.API)
+                .build();
     }
 
     @Override
     public void onPerformSync(Account account, Bundle extras, String authority, ContentProviderClient provider, SyncResult syncResult) {
         Log.d(LOG_TAG, "Starting sync");
 
+        mGoogleApiClient.connect();
         // We no longer need just the location String, but also potentially the latitude and
         // longitude, in case we are syncing based on a new Place Picker API result.
         Context context = getContext();
@@ -200,6 +213,8 @@ public class SunshineSyncAdapter extends AbstractThreadedSyncAdapter {
                     Log.e(LOG_TAG, "Error closing stream", e);
                 }
             }
+            if(mGoogleApiClient != null && mGoogleApiClient.isConnected())
+                mGoogleApiClient.disconnect();
         }
         return;
     }
@@ -456,12 +471,14 @@ public class SunshineSyncAdapter extends AbstractThreadedSyncAdapter {
                         largeIcon = BitmapFactory.decodeResource(resources, artResourceId);
                     }
                     String title = context.getString(R.string.app_name);
+                    String highTemp =  Utility.formatTemperature(context, high);
+                    String lowTemp =  Utility.formatTemperature(context, high);
 
                     // Define the text of the forecast.
                     String contentText = String.format(context.getString(R.string.format_notification),
                             desc,
-                            Utility.formatTemperature(context, high),
-                            Utility.formatTemperature(context, low));
+                            highTemp,
+                            lowTemp);
 
                     // NotificationCompatBuilder is a very convenient way to build backward-compatible
                     // notifications.  Just throw in some data.
@@ -499,6 +516,22 @@ public class SunshineSyncAdapter extends AbstractThreadedSyncAdapter {
                     SharedPreferences.Editor editor = prefs.edit();
                     editor.putLong(lastNotificationKey, System.currentTimeMillis());
                     editor.commit();
+
+                    // Creating a dataMap instance
+                    PutDataMapRequest putDataMapRequest = PutDataMapRequest.create("/sunshine");
+                    putDataMapRequest.getDataMap().putString(Utility.LOW_TEMP, lowTemp);
+                    putDataMapRequest.getDataMap().putString(Utility.HIGH_TEMP, highTemp);
+                    putDataMapRequest.getDataMap().putLong(Utility.TIMESTAMP, new Date().getTime());
+                    PutDataRequest request = putDataMapRequest.asPutDataRequest();
+                    request.setUrgent();
+                    PendingResult<DataApi.DataItemResult> pendingResult =
+                            Wearable.DataApi.putDataItem(mGoogleApiClient, request);
+                    DataApi.DataItemResult result = pendingResult.await();
+                    if(result.getStatus().isSuccess()){
+                        Log.d(LOG_TAG, "Sent");
+                    }else{
+                        Log.d(LOG_TAG, "Failed");
+                    }
                 }
                 cursor.close();
             }

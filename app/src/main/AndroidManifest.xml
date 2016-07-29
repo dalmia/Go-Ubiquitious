@@ -43,6 +43,9 @@
     <!-- Permission required to set the custom watch face as the wear background -->
     <uses-permission android:name="com.google.android.permission.PROVIDE_BACKGROUND" />
 
+    <!-- Permission required by the NotificationListenerService so that only the system can bind to it -->
+    <uses-permission android:name="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"/>
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
