@@ -57,7 +57,6 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.util.Date;
 import java.util.Vector;
 import java.util.concurrent.ExecutionException;
 
@@ -268,7 +267,6 @@ public class SunshineSyncAdapter extends AbstractThreadedSyncAdapter {
 
         try {
             JSONObject forecastJson = new JSONObject(forecastJsonStr);
-            Context context = getContext();
 
             // do we have an error?
             if ( forecastJson.has(OWM_MESSAGE_CODE) ) {
@@ -371,7 +369,6 @@ public class SunshineSyncAdapter extends AbstractThreadedSyncAdapter {
                 cVVector.add(weatherValues);
             }
 
-            int inserted = 0;
             // add to database
             if ( cVVector.size() > 0 ) {
                 ContentValues[] cvArray = new ContentValues[cVVector.size()];
@@ -428,7 +425,6 @@ public class SunshineSyncAdapter extends AbstractThreadedSyncAdapter {
             String lastNotificationKey = context.getString(R.string.pref_last_notification);
             long lastSync = prefs.getLong(lastNotificationKey, 0);
 
-            if (System.currentTimeMillis() - lastSync >= DAY_IN_MILLIS) {
                 // Last sync was more than 1 day ago, let's send a notification with the weather.
                 String locationQuery = Utility.getPreferredLocation(context);
 
@@ -481,43 +477,44 @@ public class SunshineSyncAdapter extends AbstractThreadedSyncAdapter {
                             desc,
                             highTemp,
                             lowTemp);
+                    if (System.currentTimeMillis() - lastSync >= DAY_IN_MILLIS) {
+                        // NotificationCompatBuilder is a very convenient way to build backward-compatible
+                        // notifications.  Just throw in some data.
+                        NotificationCompat.Builder mBuilder =
+                                new NotificationCompat.Builder(getContext())
+                                        .setColor(resources.getColor(R.color.primary_light))
+                                        .setSmallIcon(iconId)
+                                        .setLargeIcon(largeIcon)
+                                        .setContentTitle(title)
+                                        .setContentText(contentText);
 
-                    // NotificationCompatBuilder is a very convenient way to build backward-compatible
-                    // notifications.  Just throw in some data.
-                    NotificationCompat.Builder mBuilder =
-                            new NotificationCompat.Builder(getContext())
-                                    .setColor(resources.getColor(R.color.primary_light))
-                                    .setSmallIcon(iconId)
-                                    .setLargeIcon(largeIcon)
-                                    .setContentTitle(title)
-                                    .setContentText(contentText);
+                        // Make something interesting happen when the user clicks on the notification.
+                        // In this case, opening the app is sufficient.
+                        Intent resultIntent = new Intent(context, MainActivity.class);
 
-                    // Make something interesting happen when the user clicks on the notification.
-                    // In this case, opening the app is sufficient.
-                    Intent resultIntent = new Intent(context, MainActivity.class);
+                        // The stack builder object will contain an artificial back stack for the
+                        // started Activity.
+                        // This ensures that navigating backward from the Activity leads out of
+                        // your application to the Home screen.
+                        TaskStackBuilder stackBuilder = TaskStackBuilder.create(context);
+                        stackBuilder.addNextIntent(resultIntent);
+                        PendingIntent resultPendingIntent =
+                                stackBuilder.getPendingIntent(
+                                        0,
+                                        PendingIntent.FLAG_UPDATE_CURRENT
+                                );
+                        mBuilder.setContentIntent(resultPendingIntent);
 
-                    // The stack builder object will contain an artificial back stack for the
-                    // started Activity.
-                    // This ensures that navigating backward from the Activity leads out of
-                    // your application to the Home screen.
-                    TaskStackBuilder stackBuilder = TaskStackBuilder.create(context);
-                    stackBuilder.addNextIntent(resultIntent);
-                    PendingIntent resultPendingIntent =
-                            stackBuilder.getPendingIntent(
-                                    0,
-                                    PendingIntent.FLAG_UPDATE_CURRENT
-                            );
-                    mBuilder.setContentIntent(resultPendingIntent);
+                        NotificationManager mNotificationManager =
+                                (NotificationManager) getContext().getSystemService(Context.NOTIFICATION_SERVICE);
+                        // WEATHER_NOTIFICATION_ID allows you to update the notification later on.
+                        mNotificationManager.notify(WEATHER_NOTIFICATION_ID, mBuilder.build());
 
-                    NotificationManager mNotificationManager =
-                            (NotificationManager) getContext().getSystemService(Context.NOTIFICATION_SERVICE);
-                    // WEATHER_NOTIFICATION_ID allows you to update the notification later on.
-                    mNotificationManager.notify(WEATHER_NOTIFICATION_ID, mBuilder.build());
+                        //refreshing last sync
+                        SharedPreferences.Editor editor = prefs.edit();
+                        editor.putLong(lastNotificationKey, System.currentTimeMillis());
+                        editor.apply();
 
-                    //refreshing last sync
-                    SharedPreferences.Editor editor = prefs.edit();
-                    editor.putLong(lastNotificationKey, System.currentTimeMillis());
-                    editor.commit();
                     Bitmap bitmap = BitmapFactory.decodeResource(getContext().getResources(), iconId);
                     Asset weatherIcon = createAssetFromBitmap(bitmap);
 
@@ -525,7 +522,6 @@ public class SunshineSyncAdapter extends AbstractThreadedSyncAdapter {
                     PutDataMapRequest putDataMapRequest = PutDataMapRequest.create("/sunshine");
                     putDataMapRequest.getDataMap().putString(Utility.LOW_TEMP, lowTemp);
                     putDataMapRequest.getDataMap().putString(Utility.HIGH_TEMP, highTemp);
-                    putDataMapRequest.getDataMap().putLong(Utility.TIMESTAMP, new Date().getTime());
                     putDataMapRequest.getDataMap().putAsset(Utility.WEATHER_ICON, weatherIcon);
                     PutDataRequest request = putDataMapRequest.asPutDataRequest();
                     request.setUrgent();
@@ -694,7 +690,7 @@ public class SunshineSyncAdapter extends AbstractThreadedSyncAdapter {
         SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(c);
         SharedPreferences.Editor spe = sp.edit();
         spe.putInt(c.getString(R.string.pref_location_status_key), locationStatus);
-        spe.commit();
+        spe.apply();
     }
 
     private static Asset createAssetFromBitmap(Bitmap bitmap){
