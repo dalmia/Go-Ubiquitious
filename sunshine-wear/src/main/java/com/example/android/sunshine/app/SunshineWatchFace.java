@@ -28,6 +28,7 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.Typeface;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
@@ -49,6 +50,9 @@ import com.google.android.gms.wearable.DataEventBuffer;
 import com.google.android.gms.wearable.DataItem;
 import com.google.android.gms.wearable.DataMap;
 import com.google.android.gms.wearable.DataMapItem;
+import com.google.android.gms.wearable.Node;
+import com.google.android.gms.wearable.NodeApi;
+import com.google.android.gms.wearable.PutDataRequest;
 import com.google.android.gms.wearable.Wearable;
 
 import java.io.InputStream;
@@ -111,6 +115,7 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
         String LOW_TEMP = "lowTemp";
         String HIGH_TEMP = "highTemp";
         String WEATHER_ICON = "weatherIcon";
+        String PATH = "/sunshine";
 
         final Handler mUpdateTimeHandler = new EngineHandler(this);
         boolean mRegisteredTimeZoneReceiver = false;
@@ -125,8 +130,8 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
         SimpleDateFormat mWeekDayFormat;
         java.text.DateFormat mDayFormat;
         GoogleApiClient mGoogleApiClient;
-        String lowTemp = "-";
-        String highTemp = "-";
+        String lowTemp;
+        String highTemp;
         Bitmap mWeatherIconBitmap;
 
         final BroadcastReceiver mTimeZoneReceiver = new BroadcastReceiver() {
@@ -293,7 +298,6 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
                     break;
                 case TAP_TYPE_TAP:
                     // The user has completed the tap gesture.
-                    mTapCount++;
                     break;
             }
             invalidate();
@@ -365,15 +369,62 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
          * mWeekDayFormat to display the current day of the week and
          * mDayFormat to display the date of the current day.
          */
-        public void initialize() {
+        private void initialize() {
             mWeekDayFormat = new SimpleDateFormat("EEEE", Locale.getDefault());
             mWeekDayFormat.setCalendar(mCalendar);
             mDayFormat = DateFormat.getDateFormat(SunshineWatchFace.this);
             mDayFormat.setCalendar(mCalendar);
         }
 
+        /**
+         * Extracting the initial weather data from the connected nodes
+         * and getting the dataMap from the DataMapItem to further extract
+         * the required values.
+         */
+        private void getWeatherData(){
+            Wearable.NodeApi.getConnectedNodes(mGoogleApiClient).setResultCallback(new ResultCallback<NodeApi.GetConnectedNodesResult>() {
+                @Override
+                public void onResult(@NonNull NodeApi.GetConnectedNodesResult nodes) {
+                    Node nodeAuthority = null;
+                    for(Node node: nodes.getNodes()){
+                        nodeAuthority=node;
+                    }
+                    if(nodeAuthority==null) return;
+                    Uri uri = new Uri.Builder()
+                            .scheme(PutDataRequest.WEAR_URI_SCHEME)
+                            .path(PATH)
+                            .authority(nodeAuthority.getId())
+                            .build();
+
+                    Wearable.DataApi.getDataItem(mGoogleApiClient,uri)
+                            .setResultCallback(new ResultCallback<DataApi.DataItemResult>() {
+                                @Override
+                                public void onResult(@NonNull DataApi.DataItemResult dataItemResult) {
+                                    if(dataItemResult.getStatus().isSuccess()
+                                            && dataItemResult.getDataItem()!=null){
+                                        DataMap map = DataMapItem.fromDataItem
+                                                (dataItemResult.getDataItem()).getDataMap();
+                                        extractWeatherData(map);
+                                    }
+                                }
+                            });
+                }
+            });
+        }
+
+        /**
+         * Helper function to extract the values from the DataMap received
+         * @param map - dataMap containing the values received
+         */
+        private void extractWeatherData(DataMap map){
+            highTemp = map.getString(HIGH_TEMP);
+            lowTemp = map.getString(LOW_TEMP);
+            getBitmapFromAsset(map.getAsset(WEATHER_ICON));
+        }
+
         @Override
         public void onConnected(@Nullable Bundle bundle) {
+            getWeatherData();
             Wearable.DataApi.addListener(mGoogleApiClient, this);
         }
 
@@ -387,12 +438,9 @@ public class SunshineWatchFace extends CanvasWatchFaceService {
             for (DataEvent event : dataEventBuffer) {
                 if (event.getType() == DataEvent.TYPE_CHANGED) {
                     DataItem item = event.getDataItem();
-                    if (item.getUri().getPath().equals("/sunshine")) {
+                    if (item.getUri().getPath().equals(PATH)) {
                         DataMap map = DataMapItem.fromDataItem(item).getDataMap();
-
-                        highTemp = map.getString(HIGH_TEMP);
-                        lowTemp = map.getString(LOW_TEMP);
-                        getBitmapFromAsset(map.getAsset(WEATHER_ICON));
+                        extractWeatherData(map);
                     }
                 }
             }
